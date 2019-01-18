@@ -45,6 +45,8 @@ namespace CefSharp
 
             this->Loaded +=	gcnew RoutedEventHandler(this, &WebView::OnLoaded);	
             this->Unloaded += gcnew RoutedEventHandler(this, &WebView::OnUnloaded);	
+            this->GotKeyboardFocus += gcnew KeyboardFocusChangedEventHandler(this, &WebView::OnGotKeyboardFocus);
+            this->LostKeyboardFocus += gcnew KeyboardFocusChangedEventHandler(this, &WebView::OnLostKeyboardFocus);
         }
 
         bool WebView::TryGetCefBrowser(CefRefPtr<CefBrowser>& browser)
@@ -112,14 +114,14 @@ namespace CefSharp
             case WM_SYSCHAR:
             case WM_IME_CHAR:
                 CefRefPtr<CefBrowser> browser;
-                if (!IsFocused ||
+                if (!IsKeyboardFocused ||
                     !TryGetCefBrowser(browser))
                 {
                     break;
                 }
 
                 CefBrowser::KeyType type;
-                if (message == WM_CHAR)
+                if (message == WM_CHAR || message == WM_IME_CHAR)
                     type = KT_CHAR;
                 else if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)
                     type = KT_KEYDOWN;
@@ -191,7 +193,7 @@ namespace CefSharp
             }
 
             if (e->Key == Key::Tab ||
-                e->Key >= Key::Left && e->Key <= Key::Down)
+                (e->Key >= Key::Left && e->Key <= Key::Down))
             {
                 CefBrowser::KeyType type = e->IsDown ? KT_KEYDOWN : KT_KEYUP;
                 CefKeyInfo keyInfo;
@@ -200,6 +202,25 @@ namespace CefSharp
 
                 e->Handled = true;
             }
+        }
+
+        void WebView::OnPreviewTextInput(TextCompositionEventArgs^ e)
+        {
+            CefRefPtr<CefBrowser> browser;
+            if (!TryGetCefBrowser(browser))
+            {
+                return;
+            }
+
+            CefBrowser::KeyType type;
+            for (int i = 0; i < e->Text->Length; i++)
+            {
+                CefKeyInfo keyInfo;
+                keyInfo.key = (int)e->Text[i];
+                type = KT_CHAR; 
+                browser->SendKeyEvent(type, keyInfo, 0);
+            }
+            e->Handled = true;
         }
 
         void WebView::OnMouseButton(MouseButtonEventArgs^ e)
@@ -265,18 +286,16 @@ namespace CefSharp
             return ContentControl::ArrangeOverride(size);
         }
 
-        void WebView::OnGotFocus(RoutedEventArgs^ e)
+        void WebView::OnGotKeyboardFocus(Object^ sender, KeyboardFocusChangedEventArgs^ e)
         {
             CefRefPtr<CefBrowser> browser;
             if (TryGetCefBrowser(browser))
             {
                 browser->SendFocusEvent(true);
             }
-
-            ContentControl::OnGotFocus(e);
         }
 
-        void WebView::OnLostFocus(RoutedEventArgs^ e)
+        void WebView::OnLostKeyboardFocus(Object^ sender, KeyboardFocusChangedEventArgs^ e)
         {
             CefRefPtr<CefBrowser> browser;
             if (TryGetCefBrowser(browser))
@@ -285,8 +304,6 @@ namespace CefSharp
             }
 
             HidePopup();
-
-            ContentControl::OnLostFocus(e);
         }
 
         void WebView::OnPreviewKeyDown(KeyEventArgs^ e)
@@ -606,16 +623,19 @@ namespace CefSharp
             return _browserCore->GetBoundObjects();
         }
 
-        void WebView::OnFrameLoadStart(String^ url)
+        void WebView::OnFrameLoadStart(String^ url, bool isMainFrame)
         {
             _browserCore->OnFrameLoadStart();
+
+            LoadStartedEventArgs^ args = gcnew LoadStartedEventArgs(url, isMainFrame);
+            LoadStarted(this, args);
         }
 
-        void WebView::OnFrameLoadEnd(String^ url)
+        void WebView::OnFrameLoadEnd(String^ url, bool isMainFrame)
         {
             _browserCore->OnFrameLoadEnd();
 
-            LoadCompletedEventArgs^ args = gcnew LoadCompletedEventArgs(url);
+            LoadCompletedEventArgs^ args = gcnew LoadCompletedEventArgs(url, isMainFrame);
             LoadCompleted(this, args);
         }
 
@@ -649,13 +669,6 @@ namespace CefSharp
 
             Content = _image = gcnew Image();
             RenderOptions::SetBitmapScalingMode(_image, BitmapScalingMode::NearestNeighbor);
-            
-            // If the display properties is set to 125%, M11 and M22 will be 1.25.
-            auto factorX = _matrix->M11;
-            auto factorY = _matrix->M22;
-            auto scaleX = 1 / factorX;
-            auto scaleY = 1 / factorY;
-            _image->LayoutTransform = gcnew ScaleTransform(scaleX, scaleY);
 
             _popup = gcnew Popup();
             _popup->Child = _popupImage = gcnew Image();
@@ -676,6 +689,30 @@ namespace CefSharp
             _popupImage->Stretch = Stretch::None;
             _popupImage->HorizontalAlignment = ::HorizontalAlignment::Left;
             _popupImage->VerticalAlignment = ::VerticalAlignment::Top;
+
+            if (IsNonStandardDpi())
+            {
+                auto transform = GetScaleTransform();
+                _image->LayoutTransform = transform;
+                _popup->LayoutTransform = transform;
+                _popupOffsetTransform = transform;
+            }
+        }
+
+        bool WebView::IsNonStandardDpi()
+        {
+            // If the display properties is set to e.g. 125%, M11 and M22 will be 1.25.
+            return _matrix->M11 != 1 ||
+                _matrix->M22 != 1;
+        }
+
+        Transform^ WebView::GetScaleTransform()
+        {
+            auto factorX = _matrix->M11;
+            auto factorY = _matrix->M22;
+            auto scaleX = 1 / factorX;
+            auto scaleY = 1 / factorY;
+            return gcnew ScaleTransform(scaleX, scaleY);
         }
 
         void WebView::SetCursor(IntPtr cursor)
@@ -787,7 +824,7 @@ namespace CefSharp
         void WebView::SetPopupSizeAndPosition(const void* rect)
         {
             auto cefRect = (const CefRect*) rect;
-			
+
             _popupX = cefRect->x;
             _popupY = cefRect->y;
             _popupWidth = cefRect->width;
@@ -810,8 +847,14 @@ namespace CefSharp
             _popup->Width = _popupWidth;
             _popup->Height = _popupHeight;
 
-            _popup->HorizontalOffset = _popupX;
-            _popup->VerticalOffset = _popupY;
+            auto popupOffset = Point(_popupX, _popupY);
+            if(_popupOffsetTransform != nullptr) 
+            {
+                popupOffset = _popupOffsetTransform->GeneralTransform::Transform(popupOffset);
+            }
+
+            _popup->HorizontalOffset = popupOffset.X;
+            _popup->VerticalOffset = popupOffset.Y;
         }
 
         void WebView::ShowHidePopup(bool isOpened)
@@ -889,4 +932,5 @@ namespace CefSharp
                 }
             }
         }
-    }}
+    }
+}

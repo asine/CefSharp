@@ -6,7 +6,7 @@ bindings are written in C++/CLI but can be used from any CLR language, e.g. C# o
 browser control implementations. See the CefSharp.WinForms.Example or CefSharp.Wpf.Example projects for example web browsers built
 using this library; they are (at this moment) the best "documentation" of how the control can actually be used.
 
-This project is [BSD](http://www.opensource.org/licenses/bsd-license.php "BSD License") licensed.
+This project is [BSD](http://www.opensource.org/licenses/bsd-license.php "BSD License") licensed, which means that it can be used from both proprietary and free/open source applications. For the full details, see the [LICENSE](LICENSE) file.
 
 # Documentation & mailing list
 
@@ -18,8 +18,8 @@ help by searching the archive to that same Google Group for previous questions.
 
 Binary releases contain everything needed to embed Chromium in your CLR application.
 
-* **Stable** (requires .NET 4): CefSharp-1.25.4 - [binaries](https://github.com/cefsharp/CefSharp/releases/download/v1.25.4/CefSharp-v1.25.4-binaries.zip),
-[source](https://github.com/cefsharp/CefSharp/archive/v1.25.4.zip). Based on Chromium 25.0.1364.152  
+* **Stable** (requires .NET 4): CefSharp-1.25.8 - [binaries](https://github.com/cefsharp/CefSharp/releases/download/v1.25.8/CefSharp-v1.25.8-binaries.zip),
+[source](https://github.com/cefsharp/CefSharp/archive/v1.25.8.zip). Based on Chromium 25.0.1364.152
 * **Stable** (older release, works with .NET 2. Requires [7-Zip](http://www.7-zip.org/) to extract.): [CefSharp-1.25.0](http://sourceforge.net/projects/cefsharp/files/CefSharp-1.25.0.7z/download).
 Based on Chromium 25.0.1364.152
 
